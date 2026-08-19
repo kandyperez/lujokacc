@@ -3,6 +3,9 @@ import Image from "next/image";
 import type { ProductImage as ProductImageRow } from "@/lib/types";
 
 export function imageUrl(filename: string): string {
+  if (filename.startsWith("http://") || filename.startsWith("https://")) {
+    return filename;
+  }
   return `/api/uploads/${filename}`;
 }
 

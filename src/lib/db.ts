@@ -5,7 +5,11 @@ import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import fs from "node:fs";
 
-export const DATA_DIR = path.join(process.cwd(), "data");
+const isVercel = process.env.VERCEL === "1";
+
+export const DATA_DIR = isVercel
+  ? "/tmp"
+  : path.join(process.cwd(), "data");
 
 const DB_FILE = path.join(DATA_DIR, "catalogo.db");
 
