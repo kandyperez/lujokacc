@@ -3,6 +3,7 @@ import "server-only";
 import { DatabaseSync } from "node:sqlite";
 
 import path from "node:path";
+import fs from "node:fs";
 
 export const DATA_DIR = path.join(process.cwd(), "data");
 
@@ -83,6 +84,9 @@ function seed(db: DatabaseSync) {
 }
 
 function connect(): DatabaseSync {
+
+  // Ensure the directory exists before opening the database
+  fs.mkdirSync(DATA_DIR, { recursive: true });
 
   // `timeout` evita "database is locked" cuando varios procesos (los workers
   // del build de Next, o dev + build a la vez) abren el archivo en paralelo.
