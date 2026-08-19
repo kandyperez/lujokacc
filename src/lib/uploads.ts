@@ -1,64 +1,46 @@
-import "server-only";
+import { put, del } from "@vercel/blob";
 
-import { randomUUID } from "node:crypto";
-import { writeFile, unlink } from "node:fs/promises";
-import path from "node:path";
+export const MAX_IMAGES_PER_PRODUCT = 5;
 
-// La ruta se compone aquí (y no se importa) para que el análisis estático de
-// Turbopack la reconozca como acotada a `data/uploads`.
-const uploadPath = (filename: string) => path.join(process.cwd(), "data", "uploads", filename);
-
-export const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
-export const MAX_IMAGES_PER_PRODUCT = 8;
-
-const EXTENSION_BY_TYPE: Record<string, string> = {
-  "image/jpeg": ".jpg",
-  "image/png": ".png",
-  "image/webp": ".webp",
-  "image/gif": ".gif",
-  "image/avif": ".avif",
-};
-
-export const ACCEPTED_IMAGE_TYPES = Object.keys(EXTENSION_BY_TYPE);
-
-export class UploadError extends Error {}
+export class UploadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UploadError";
+  }
+}
 
 /**
- * Guarda una imagen en `data/uploads` y devuelve el nombre generado.
- * El nombre nunca viene del cliente, así se evita un path traversal.
+ * Sube una imagen a Vercel Blob y retorna la URL pública HTTPS.
  */
 export async function saveImage(file: File): Promise<string> {
-  const extension = EXTENSION_BY_TYPE[file.type];
-  if (!extension) {
-    throw new UploadError(`Formato no admitido: ${file.name || file.type || "desconocido"}`);
-  }
-  if (file.size > MAX_IMAGE_BYTES) {
-    throw new UploadError(`"${file.name}" supera el límite de 5 MB.`);
+  if (!file || file.size === 0) {
+    throw new UploadError("Archivo no válido o vacío.");
   }
 
-  const filename = `${randomUUID()}${extension}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await writeFile(uploadPath(filename), buffer);
-  return filename;
-}
+  // Validar extensión si lo deseas
+  const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+  if (!allowedTypes.includes(file.type)) {
+    throw new UploadError("Formato de imagen no soportado (usa JPG, PNG, WEBP o GIF).");
+  }
 
-/** Borra el archivo físico. Un fallo aquí no debe romper la operación de BD. */
-export async function deleteImageFile(filename: string): Promise<void> {
-  if (!isSafeFilename(filename)) return;
   try {
-    await unlink(uploadPath(filename));
-  } catch {
-    // El archivo ya no existe: nada que hacer.
+    const blob = await put(`products/${Date.now()}-${file.name}`, file, {
+      access: "public",
+    });
+    return blob.url; // Retorna la URL completa almacenada en la CDN de Vercel
+  } catch (error) {
+    throw new UploadError("No se pudo subir la imagen al servidor.");
   }
 }
 
-/** Sólo se sirven nombres generados por `saveImage`: uuid + extensión conocida. */
-export function isSafeFilename(filename: string): boolean {
-  return /^[a-f0-9-]{36}\.(jpg|png|webp|gif|avif)$/.test(filename);
-}
-
-export function contentTypeFor(filename: string): string {
-  const extension = path.extname(filename).toLowerCase();
-  const match = Object.entries(EXTENSION_BY_TYPE).find(([, ext]) => ext === extension);
-  return match ? match[0] : "application/octet-stream";
+/**
+ * Borra una imagen de Vercel Blob pasando su URL o nombre guardado.
+ */
+export async function deleteImageFile(url: string): Promise<void> {
+  if (!url) return;
+  try {
+    await del(url);
+  } catch {
+    // Silencia el error si el archivo ya no existe en el storage
+  }
 }
